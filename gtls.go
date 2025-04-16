@@ -12,7 +12,6 @@ import (
 	"errors"
 	"math/big"
 	"net"
-	"net/http"
 	"net/url"
 	"strconv"
 	"time"
@@ -22,13 +21,7 @@ import (
 
 var Https = certmagic.HTTPS
 
-func HTTPS(domainNames []string, mux http.Handler) error {
-	return certmagic.HTTPS(domainNames, mux)
-}
-func Listen(domainNames []string) (net.Listener, error) {
-	return certmagic.Listen(domainNames)
-}
-func TLS(domainNames []string) (*tls.Config, error) {
+func MagicTLS(domainNames []string) (*tls.Config, error) {
 	return certmagic.TLS(domainNames)
 }
 
@@ -43,15 +36,16 @@ func SplitHostPort(address string) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	portnum, err := strconv.Atoi(port)
+	portNum, err := strconv.Atoi(port)
 	if err != nil {
 		return "", 0, err
 	}
-	if 1 > portnum || portnum > 0xffff {
+	if 1 > portNum || portNum > 0xffff {
 		return "", 0, errors.New("port number out of range " + port)
 	}
-	return host, portnum, nil
+	return host, portNum, nil
 }
+
 func ParseHost(host string) (net.IP, int) {
 	if ip := net.ParseIP(host); ip != nil {
 		if ip4 := ip.To4(); ip4 != nil {
@@ -62,6 +56,7 @@ func ParseHost(host string) (net.IP, int) {
 	}
 	return nil, 0
 }
+
 func VerifyProxy(proxyUrl string) (*url.URL, error) {
 	proxy, err := url.Parse(proxyUrl)
 	if err != nil {
@@ -74,6 +69,7 @@ func VerifyProxy(proxyUrl string) (*url.URL, error) {
 		return nil, errors.New("unsupported proxy scheme: " + proxy.Scheme)
 	}
 }
+
 func GetServerName(addr string) string {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -83,7 +79,7 @@ func GetServerName(addr string) string {
 }
 
 func CreateRootCert(key *ecdsa.PrivateKey) (*x509.Certificate, error) {
-	beforDate, err := time.ParseInLocation(time.DateOnly, "2023-03-20", time.Local)
+	beforeDate, err := time.ParseInLocation(time.DateOnly, "2023-03-20", time.Local)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +98,7 @@ func CreateRootCert(key *ecdsa.PrivateKey) (*x509.Certificate, error) {
 			OrganizationalUnit: []string{"GoSpiderProxy"},
 			CommonName:         "Gospider Root CA",
 		},
-		NotBefore:             beforDate,
+		NotBefore:             beforeDate,
 		NotAfter:              afterDate,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
@@ -120,6 +116,7 @@ func CreateRootCert(key *ecdsa.PrivateKey) (*x509.Certificate, error) {
 func CreateCertKey() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 }
+
 func CreateCertWithCN(rootCert *x509.Certificate, key *ecdsa.PrivateKey, commonName string) (*x509.Certificate, error) {
 	csr := &x509.Certificate{
 		Version:               3,
@@ -176,6 +173,7 @@ func CreateCertWithCert(rootCert *x509.Certificate, key *ecdsa.PrivateKey, preCe
 	}
 	return x509.ParseCertificate(der)
 }
+
 func CreateProxyCertWithName(serverName string) (tlsCert tls.Certificate, err error) {
 	crt, err := LoadCert(CrtFile)
 	if err != nil {
@@ -191,6 +189,7 @@ func CreateProxyCertWithName(serverName string) (tlsCert tls.Certificate, err er
 	}
 	return CreateTlsCert(cert, key)
 }
+
 func CreateProxyCertWithCert(crt *x509.Certificate, key *ecdsa.PrivateKey, preCert *x509.Certificate) (tlsCert tls.Certificate, err error) {
 	if crt == nil {
 		crt, err = LoadCert(CrtFile)
@@ -210,6 +209,7 @@ func CreateProxyCertWithCert(crt *x509.Certificate, key *ecdsa.PrivateKey, preCe
 	}
 	return CreateTlsCert(cert, key)
 }
+
 func CreateTlsCert(cert *x509.Certificate, key *ecdsa.PrivateKey) (tls.Certificate, error) {
 	keyFile, err := GetCertKeyData(key)
 	if err != nil {
@@ -217,9 +217,11 @@ func CreateTlsCert(cert *x509.Certificate, key *ecdsa.PrivateKey) (tls.Certifica
 	}
 	return tls.X509KeyPair(GetCertData(cert), keyFile)
 }
+
 func GetCertData(cert *x509.Certificate) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 }
+
 func GetCertKeyData(key *ecdsa.PrivateKey) ([]byte, error) {
 	keyDer, err := x509.MarshalECPrivateKey(key)
 	if err != nil {
@@ -227,10 +229,12 @@ func GetCertKeyData(key *ecdsa.PrivateKey) ([]byte, error) {
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDer}), nil
 }
+
 func LoadCertKey(data []byte) (*ecdsa.PrivateKey, error) {
 	block, _ := pem.Decode(data)
 	return x509.ParseECPrivateKey(block.Bytes)
 }
+
 func LoadCert(data []byte) (*x509.Certificate, error) {
 	block, _ := pem.Decode(data)
 	return x509.ParseCertificate(block.Bytes)
@@ -238,22 +242,39 @@ func LoadCert(data []byte) (*x509.Certificate, error) {
 
 type AddrType int
 
+func (at AddrType) String() string {
+	switch at {
+	case AutoIp:
+		return "AutoIp"
+	case Ipv4:
+		return "Ipv4"
+	case Ipv6:
+		return "Ipv6"
+	case UnknownIp:
+		return "UnknownIp"
+	default:
+		return "Undefined"
+	}
+}
+
 const (
-	Auto AddrType = iota
+	AutoIp AddrType = iota
 	Ipv4
 	Ipv6
+	UnknownIp
 )
 
 func ParseIp(ip net.IP) AddrType {
 	if ip != nil {
 		if ip4 := ip.To4(); ip4 != nil {
-			return 4
+			return Ipv4
 		} else if ip6 := ip.To16(); ip6 != nil {
-			return 6
+			return Ipv6
 		}
 	}
-	return 0
+	return UnknownIp
 }
+
 func GetHost(addrTypes ...AddrType) net.IP {
 	hosts := GetHosts(addrTypes...)
 	if len(hosts) == 0 {
@@ -262,12 +283,13 @@ func GetHost(addrTypes ...AddrType) net.IP {
 		return hosts[0]
 	}
 }
+
 func GetHosts(addrTypes ...AddrType) []net.IP {
 	var addrType AddrType
 	if len(addrTypes) > 0 {
 		addrType = addrTypes[0]
 	}
-	result := []net.IP{}
+	var result []net.IP
 	lls, err := net.InterfaceAddrs()
 	if err != nil {
 		return result

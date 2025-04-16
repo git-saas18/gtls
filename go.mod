@@ -1,4 +1,4 @@
-module github.com/gospider007/gtls
+module github.com/git-saas18/gtls
 
 go 1.24.0
 
